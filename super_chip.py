@@ -1,9 +1,40 @@
+#!/usr/bin/env python3
+# -*- coding: utf-8 -*-
+"""
+super_chip.py
+
+Project:     Optimizing Production and Distribution at Super Chip Company 
+Author:      Jonathan Wilson
+Created:     Apr 2025
+Last Modified: May 2025
+
+Setup:
+    conda env create -f environment.yml
+
+Dependencies:
+    See conda environment.yml
+"""
 from gurobipy import *
 import polars as pl
 
+##########################################################################################
 # User defined classes and functions - to keep things clean and tidy
-# genAI copilot used to refactor code to save me countless hours of cleaning up code 
-# Original code is archived for reference 
+##########################################################################################
+# ComparativeReport: 
+#   Generates a side-by-side text report comparing two Gurobi models
+# SolutionExtractor: 
+#   Turns a Gurobi model’s decision‐variable values into a Polars DataFrame
+# SolutionAggregator: 
+#   Groups and sums a solution DataFrame by a given column (e.g., facility, chip, or region)
+#   and returns a sorted DataFrame of total units.
+# BarPlotter: 
+#   Simple wrapper around Bokeh to produce and save a categorical bar chart 
+# ConstraintSensitivityExtractor: 
+#   Extracts constraint‐level sensitivity (shadow prices and RHS ranges) from a Gurobi model into a 
+#   Polars DataFrame, including facility/region context.
+# VariableSensitivityExtractor: Extracts variable‐level sensitivity (objective coefficient ranges)
+#   from a Gurobi model into a Polars DataFrame, mapping variables back to facility/chip/region.
+
 from utils.data_loader import DataLoader
 from utils.report_generator import ComparativeReport
 from utils.solution_processor import SolutionExtractor, SolutionAggregator
@@ -13,7 +44,6 @@ from utils.sensitivity_processor import (
     VariableSensitivityExtractor
 )
 
-
 """ -------------------------------------------------------------------------------------
                                 ___LP Model___
 ------------------------------------------------------------------------------------------
@@ -22,9 +52,52 @@ from utils.sensitivity_processor import (
 # Model Solver 
 ##############################
 def super_chip_solve(supply, demand, costs, model_name, case="alternative", extra_capacity=None):
+    """
+    Build and solve the Super Chip production-shipment optimization model.
+
+    This function constructs a Gurobi model that minimizes the combined
+    production and shipping costs of delivering multiple chip types from
+    a set of facilities to various sales regions. Two constraint schemes
+    are supported:
+      - "base": enforces production proportional to each facility's capacity.
+      - "alternative": allows flexible production up to each facility's capacity.
+
+    Optionally, extra capacity can be added to each facility before solving.
+    The resulting model and solution files (.lp and .sol) are written to
+    'models_and_solutions/'.
+
+    Args:
+        supply (List[float]):
+            Available production capacity for each of the 5 facilities.
+        demand (Mapping[int, Mapping[int, float]]):
+            Nested mapping of demand[r][c] giving the required units of
+            chip type 'c' in region 'r'.
+        costs (List):
+            Two-element List '(shipping_cost, prod_cost)' where:
+              - shipping_cost[f][c][r]: cost to ship one unit of chip 'c' from
+                facility 'f' to region 'r'.
+              - prod_cost[f][c]: cost to produce one unit of chip 'c' at
+                facility 'f'.
+        model_name (str):
+            Identifier used as the Gurobi model name and to name output files.
+        case (str, optional):
+            Constraint scheme, either "base" or "alternative".
+            Defaults to "alternative".
+        extra_capacity (List[float], optional):
+            Additional capacity to add to each facility prior to optimization.
+            If None, no extra capacity is applied. Defaults to None.
+
+    Returns:
+        gurobipy.Model:
+            The solved Gurobi model instance
+
+    Raises:
+        ValueError:
+            If an unrecognized `case` is provided.
+    """
     m = Model(model_name)
     m.modelSense = GRB.MINIMIZE
-    # m.setParam('outputFlag', 0)
+    m.setParam('outputFlag', 0)
 
     shipping_cost, prod_cost = costs
     n_suppliers = 5
@@ -301,8 +374,19 @@ Would you recommend an alternative production policy?
 
 If so, how would the new policy compare to the current one with respect to costs?
 
-Solution approach: 
-- 
+Analysis approach: 
+- Run two different Transportation Simplex LPs: 
+    1. Proportional (Base Case) 
+    2. Not constrained to porpotionality of capacity (Alternative Case).
+- Evaluate the two methods based on their cost where the minimum should be selected. 
+
+Reco: 
+BLUF: Given the alternative model we would save $550,816.38 in combined shipping and production costs. 
+
+In the base case the cost of operations was $49,634,246.78 where as in the alternative case the cost $49,083,430.40.
+Comparing the distributions for the number of units of chip type c shipped from facility f to region r we see that 
+for the base case numbers for each facility is proportional to their production capacity where as for the alternative 
+case we see a different distribution seen on the grapgh below. 
 """
 ##########################################################################################
 # Base Case - Current Method
@@ -332,8 +416,21 @@ investment of capital?
 
 How much would a production capacity expansion affect the total costs for production and distribution?
 
-Solution approach: 
-- 
+Analysis approach: 
+- From the alternative case model we extract out various data from the model that will assist in analysis
+- In particular the shadow prices and sensitivity analysis of RHS contraints of supply will be most beneficial. 
+- Evaluate the shadow prices. The shadow price with zeros are not helpful and ones that are negative will yield 
+costs savings. The RHS ranges should provide the units by which ones can increase the production capacity. 
+
+Reco: 
+BLUF: It's recommended that we increase the production capacity for Richmond by 312.55 units which will yield 
+an additional $23,794.20 assuming we are using the alternative case. No other facility had any benefit to adding 
+additional capacities. 
+
+Analysizing all the other facilities the shadow prices are zero meaning there was no additional savings at these 
+locations. Richmond contained a shadow price of -.70 or $700 which translates into an additional $700 of savings for 
+every additional unit added to capacity up to 312.55 units. If you calculate this you have $700*312.55 or $218,785 in
+cost savings. However, since we had already gained costs savings from 
 """
 
 base_df = SolutionExtractor(model_base).to_df()
@@ -390,19 +487,27 @@ variable_df.write_csv("variable_sensitivity_df.csv")
 ##############################
 # Expanding the production capacity
 ##############################
-
 """
-constraint	facility	facility_idx	region	chip_type	shadow_price	rhs_sensitivity_low	rhs_sensitivity_high
-supply_f5	Charolottesville	5			5.15000000000001	154.257554585153	154.257554585153
-supply_f4	Roanoke	4			2.41000000000001	163.331528384279	163.33152838428
-supply_f3	Norfolk	3			0.190000000000005	222.312358078602	222.312358078603
-supply_f1	Alexandria	1			0	263.145240174673	263.145240174673
-							
-supply_f2	Richmond	2			-0.829999999999998	235.923318777292	235.923318777293
-
+Alexandria 
+    - Shadow Price: 0
+    - RHS Sensitivity (321.97-inf)
+Norfolk 
+    - Shadow Price: 0
+    - RHS Sensitivity (260.7-inf)
+Roanoke 
+    - Shadow Price: 0
+    - RHS Sensitivity (106.71-inf)
+Charolottesville 
+    - Shadow Price: 0
+    - RHS Sensitivity (37.59-inf)
+Richmond 
+    - Shadow Price: -0.699999999999996
+    - RHS Sensitivity (312-312.55)
 """
-extra = [0, 235.923318777292, 0, 0, 0]
+
+extra = [0, 312.55, 0, 0, 0] # Richmond Shadow Price: -0.699999999999996 RHS Sensitivity (312-312.55)
 extra_model = super_chip_solve(prod_cap, demand, [shipping_cost, prod_cost], "expanding_prod", extra_capacity=extra)
+ComparativeReport(model_alternative, extra_model).generate("comparison_reports/Comparison_Report_expanding_prod.txt")
 constr_alt = model_alternative.getConstrByName("supply_f2")
 print(f"Alternative objective value = ${model_alternative.ObjVal*1000:,.2f}")
 print("Alt RHS is:", constr_alt.RHS)
@@ -423,10 +528,18 @@ Does Super Chip have sufficient capacity to handle the estimated increase in dem
 If so, what are the associated costs for filling the new demand in comparison to this year's
 demand?
 
-Solution approach: 
-- create a new demand that add a 10% increase to all demands 
+Analysis approach: 
+- create a new demand matrix that adds 10% to all demands 
 - resolve the alternative case model with this new demand
 - evaluate results 
+
+Reco: 
+BLUF: It looks like Super Chip will be able to handle the demand but will sustain and additional cost of 
+$4,940,989.87 to operations. It's recommended that an appropriate price structure be initiated in ordder to 
+cover the costs. 
+
+The solution was able to yield a feasible value hence we are able to satisfy the demand given the resources. 
+However, the cost will be pretty steep. 
 """
 # print(demand[0][1]) # demand[0][1] = 2.17 ----> new_demand[0][1] = 2.387
 demand_increase = 1.10  # +10%
@@ -439,8 +552,7 @@ new_demand = {
 }
 demand_increase_model = super_chip_solve(prod_cap, new_demand, [shipping_cost, prod_cost], "new_demand")
 ComparativeReport(model_alternative, demand_increase_model).generate("comparison_reports/Comparison_Report_Alt_new_demand.txt")
-
-
+# print(demand_increase_model.Status == GRB.OPTIMAL)
 """"
 ##############################
 # #4 - New tech and which facility? 
@@ -451,15 +563,17 @@ technologies could reduce production costs for all of the chips by 15%.
 If Super Chip was to evaluate this new manufacturing technology in one of its facilities, which facility should receive
 the new technology?
 
-Solution approach: 
-- Itereate through the prod_cost for each facility and and reduce the cost by 15%. This assumes the new tech would have been 
-applied to this facility.
-- Rerun the LP solver for each scenario (each facility) and take the min objective value 
+Analysis approach: 
+- Itereate through the prod_cost for each facility and and reduce the production cost for each chip by 15%. This assumes 
+the new tech would have been applied to this facility.
+- Rerun the LP solver for each scenario (each facility) and select the facility with the min objective value.
+
+Reco: 
+BLUF: It's recommended that you place this new technology at the Alexandria facility as it will have an additional 
+cost savings of $2,401,006.97.
+
+
 """
-# print("prod before:", prod_cost[0][0])
-# print("prod before:", prod_cost[1][0])
-# print("prod after:", new_prod_cost[0][0])
-# print("prod after:", new_prod_cost[1][0])
 
 models = []
 for f in range(5):
@@ -493,6 +607,3 @@ def find_min(models):
 model_tech = find_min(models)
 print(f"Best objective value = ${model_tech.ObjVal*1000:,.2f}")
 ComparativeReport(model_alternative, model_tech).generate("comparison_reports/Comparison_Report_Alt_new_tech.txt")
-
-
-
