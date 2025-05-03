@@ -8,7 +8,8 @@ Author:      Jonathan Wilson
 Created:     Apr 2025
 Last Modified: May 2025
 
-Setup:
+Evn & Setup:
+    Ubuntu Linux
     conda env create -f environment.yml
 
 Dependencies:
@@ -57,12 +58,13 @@ def super_chip_solve(supply, demand, costs, model_name, case="alternative", extr
 
     This function constructs a Gurobi model that minimizes the combined
     production and shipping costs of delivering multiple chip types from
-    a set of facilities to various sales regions. Two constraint schemes
-    are supported:
-      - "base": enforces production proportional to each facility's capacity.
-      - "alternative": allows flexible production up to each facility's capacity.
+    a set of facilities in Virginia to various sales regions across the U.S. 
+    Two constraint schemes are explored:
+      - "base": enforces production proportional to each facility's capacity. The original scheme. 
+      - "alternative": allows flexible production up to each facility's capacity. My reco.
 
-    Optionally, extra capacity can be added to each facility before solving.
+    Optionally, extra capacity can be added to each facility before solving to explore various scenarios.
+
     The resulting model and solution files (.lp and .sol) are written to
     'models_and_solutions/'.
 
@@ -116,7 +118,7 @@ def super_chip_solve(supply, demand, costs, model_name, case="alternative", extr
     x = {}
     """ 
     ___Decision variables___
-    x_f_c_r - number of units of chip type c shipped from facility f to region r
+    x_f_c_r - number of units of chip type c produced and shipped from facility f to region r
 
     Where
         f is the facility 
@@ -137,6 +139,10 @@ def super_chip_solve(supply, demand, costs, model_name, case="alternative", extr
     Where 
         shipping_cost[f][c][r] is the shipping cost f_c_r -> shipping_cost_f_c_r
         prod_cost[f][c] is the Production cost f_c -> shipping_cost_f_c
+
+    Example
+        For prod_cost[0][0] + shipping_cost[0][0][0] = 59.79 + 1.76 = 61.55
+        We have (61.55 * x_1_1_1) then we sum for all 
     """
     m.setObjective(
         quicksum(
@@ -154,6 +160,9 @@ def super_chip_solve(supply, demand, costs, model_name, case="alternative", extr
     the facility's total portion of production capacity. See the Suppply constraint.
     """
     if case == "base":
+        #################################################################
+        # Setup for base case - supply constraint proportionality
+        #################################################################
         total_supply = sum(supply)
         facility_capacity_proportions = [cap_f / total_supply for cap_f in supply]
 
@@ -168,7 +177,11 @@ def super_chip_solve(supply, demand, costs, model_name, case="alternative", extr
         """ 
         ___Supply Constraint___ 
         Binding constraint is added here to ensure that production levels are proportional to the facility's total proportion of 
-        production capacity. Here total_demand_for_chips is the sum of all demand for all chips for each region.  
+        production capacity. Here total_demand_for_chips is the sum of all demand for all chips for each region. 
+
+        Example
+            For facility_capacity_proportions[0] * total_demand_for_chips
+            .2533 * 1038.97 == 263.15 
         """
         for f in range(n_suppliers):
             m.addConstr(
@@ -486,6 +499,7 @@ variable_df.write_csv("variable_sensitivity_df.csv")
 
 ##############################
 # Expanding the production capacity
+# Sensitivity Analysis
 ##############################
 """
 Alexandria 
@@ -505,7 +519,7 @@ Richmond
     - RHS Sensitivity (312-312.55)
 """
 
-extra = [0, 312.55, 0, 0, 0] # Richmond Shadow Price: -0.699999999999996 RHS Sensitivity (312-312.55)
+extra = [0, 61.899, 0, 0, 0] # Richmond Shadow Price: -0.699999999999996 RHS Sensitivity (312-312.55)
 extra_model = super_chip_solve(prod_cap, demand, [shipping_cost, prod_cost], "expanding_prod", extra_capacity=extra)
 ComparativeReport(model_alternative, extra_model).generate("comparison_reports/Comparison_Report_expanding_prod.txt")
 constr_alt = model_alternative.getConstrByName("supply_f2")
@@ -516,6 +530,49 @@ constr_extra = extra_model.getConstrByName("supply_f2")
 print(f"Extra objective value = ${extra_model.ObjVal*1000:,.2f}")
 print("RHS is:", constr_extra.RHS)
 print("Pi  is:", constr_extra.Pi)  
+constraint_df2 = (
+    ConstraintSensitivityExtractor(
+        extra_model,
+        indx_to_facility
+    )
+    .to_df()
+    .sort("shadow_price", descending=True)
+)
+constraint_df2.write_csv("constraint_sensitivity_df2.csv")
+print(extra_model.ObjVal)
+
+
+##############################
+# Finding the right production value
+# Sensitivity Analysis
+##############################
+# extra = [0, 0, 0, 0, 0]
+# op_val = 49059.63619999998
+
+
+# extra_model = super_chip_solve(prod_cap, demand, [shipping_cost, prod_cost], "expanding_prod", extra_capacity=extra)
+# constr_extra = extra_model.getConstrByName("supply_f2")
+# r0 = constr_extra.RHS
+# total_delta = 0
+
+# while True:
+#     extra_model.optimize()
+#     constr_extra = extra_model.getConstrByName("supply_f2")
+#     new_op_val = extra_model.ObjVal  
+#     pi = constr_extra.Pi
+#     delta = constr_extra.SARHSUp-constr_extra.SARHSLow  
+#     if pi == 0:
+#         break
+#     if new_op_val > op_val:
+#         print("Done")
+#         print(delta)
+#         print(pi)
+#         print(new_op_val)
+#         print(constr_extra.RHS)
+#         break
+#     total_delta += delta
+#     constr_extra.RHS = r0 + total_delta
+
 """"
 ##############################
 # #3 - 10% demand increase cand they handle this? Costs?  

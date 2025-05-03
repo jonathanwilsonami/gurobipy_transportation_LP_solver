@@ -1,0 +1,79 @@
+\documentclass{article}
+\usepackage{amsmath}
+\usepackage{amssymb}
+
+\begin{document}
+
+%-----------------------------
+% Objective
+%-----------------------------
+\[
+\min\;O
+\;=\;
+\sum_{f=1}^{5}\sum_{c=1}^{30}\sum_{r=1}^{23}
+\bigl(\mathrm{prod\_cost}_{f c} + \mathrm{ship\_cost}_{f c r}\bigr)\;x_{f c r}
+\]
+
+%-----------------------------
+% Constraints
+%-----------------------------
+\[
+\textbf{Subject to:}
+\]
+
+\medskip
+
+\noindent\fbox{\parbox{0.95\textwidth}{%
+\textbf{Base case} \quad (\texttt{case = "base"})%
+}}
+\[
+\begin{aligned}
+&\forall f\in\{1,\dots,5\}:\quad
+  \sum_{c=1}^{30}\sum_{r=1}^{23} x_{f c r}
+  = \frac{\,\mathrm{cap}_{f}\,}{\sum_{k=1}^{5}\mathrm{cap}_{k}}\;
+    \sum_{c=1}^{30}\sum_{r=1}^{23} \mathrm{demand}_{r c},\\[6pt]
+&\forall c\in\{1,\dots,30\},\;r\in\{1,\dots,23\}:\quad
+  \sum_{f=1}^{5} x_{f c r}
+  \ge \mathrm{demand}_{r c}.
+\end{aligned}
+\]
+
+\medskip
+
+\noindent\fbox{\parbox{0.95\textwidth}{%
+\textbf{Alternative case} \quad (\texttt{case = "alternative"})%
+}}
+\[
+\begin{aligned}
+&\forall f\in\{1,\dots,5\}:\quad
+  \sum_{c=1}^{30}\sum_{r=1}^{23} x_{f c r}
+  \;\le\;
+  \underbrace{\mathrm{supply}_{f} \;+\;\mathrm{extraCap}_{f}}_{\displaystyle \mathrm{effective\_supply}_{f}},\\[6pt]
+&\forall c\in\{1,\dots,30\},\;r\in\{1,\dots,23\}:\quad
+  \sum_{f=1}^{5} x_{f c r}
+  \ge \mathrm{demand}_{r c}.
+\end{aligned}
+\]
+
+%-----------------------------
+% Notation
+%-----------------------------
+\medskip
+
+\noindent\textbf{Notation.}
+\begin{description}
+  \item[$x_{f c r}$] number of units of chip type $c$ shipped from facility $f$ to region $r$.
+  \item[$f = 1,\dots,5$] index over the 5 facilities.
+  \item[$c = 1,\dots,30$] index over the 30 chip types.
+  \item[$r = 1,\dots,23$] index over the 23 sales regions.
+  \item[$\mathrm{prod\_cost}_{f c}$] per‐unit production cost at facility $f$ for chip $c$.
+  \item[$\mathrm{ship\_cost}_{f c r}$] per‐unit shipping cost from facility $f$ to region $r$ for chip $c$.
+  \item[$\mathrm{cap}_{f}$] installed capacity of facility $f$ (used in the “base” case).
+  \item[$\mathrm{supply}_{f}$] base supply capacity of facility $f$ (used in the “alternative” case).
+  \item[$\mathrm{extraCap}_{f}$] additional capacity added to facility $f$ (default zero if none).
+  \item[$\mathrm{effective\_supply}_{f}$] $=\mathrm{supply}_{f} + \mathrm{extraCap}_{f}$.
+  \item[$\mathrm{demand}_{r c}$] demand in region $r$ for chip type $c$.
+  \item[$O$] total cost (objective) combining production and shipping.
+\end{description}
+
+\end{document}

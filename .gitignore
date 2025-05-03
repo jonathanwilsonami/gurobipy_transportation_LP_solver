@@ -1,14 +1,12 @@
 archive/
 data/
-pics/
-www/
 Project Description.pdf
 notes.txt
 *.csv
 *.lp
 *.sol
-*.odt
 *.txt
 *.~lock*
 __pycache__/
 models_and_solutions
+www/pics
